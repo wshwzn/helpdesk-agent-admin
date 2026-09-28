@@ -15,8 +15,8 @@ import {
   updateRetrievalSettings,
   uploadKnowledgeDocument,
 } from '@/api/knowledge'
-import type { DocumentChunkPreview, KnowledgeBase, KnowledgeDocument, KnowledgeSearchResponse, RetrievalSettingsPayload } from '@/types/knowledge'
-import { formatBytes, formatDateTime } from '@/utils/format'
+import type { DocumentChunkPreview, KnowledgeBase, KnowledgeDocument, KnowledgeSearchResponse, KnowledgeSearchResult, RetrievalSettingsPayload } from '@/types/knowledge'
+import { formatBytes, formatCosineScorePercent, formatDateTime, formatSimilarityPercent } from '@/utils/format'
 
 const statusLabels = { UPLOADING: '上传中', PENDING: '待索引', PROCESSING: '处理中', READY: '已就绪', FAILED: '失败' }
 const statusTypes = { UPLOADING: 'info', PENDING: 'warning', PROCESSING: 'primary', READY: 'success', FAILED: 'danger' } as const
@@ -38,8 +38,11 @@ const preview = ref<DocumentChunkPreview | null>(null)
 const previewVisible = ref(false)
 const searchQuery = ref('')
 const searchResponse = ref<KnowledgeSearchResponse | null>(null)
+const selectedSearchResult = ref<KnowledgeSearchResult | null>(null)
+const searchDetailVisible = ref(false)
 const settingsFormRef = ref<FormInstance>()
 const thresholdEnabled = ref(false)
+const vectorSimilarityPercent = ref(65)
 const settings = reactive<RetrievalSettingsPayload>({ candidateLimit: 50, vectorMinSimilarity: null, resultLimit: 5 })
 let pollingTimer: number | undefined
 const settingsRules: FormRules<RetrievalSettingsPayload> = {
@@ -57,6 +60,7 @@ async function loadKnowledgeBase(): Promise<void> {
   settings.vectorMinSimilarity = knowledgeBase.value.vectorMinSimilarity
   settings.resultLimit = knowledgeBase.value.retrievalResultLimit
   thresholdEnabled.value = knowledgeBase.value.vectorMinSimilarity !== null
+  vectorSimilarityPercent.value = Math.round((knowledgeBase.value.vectorMinSimilarity ?? 0.65) * 1000) / 10
 }
 
 /** 加载当前页文档，并在存在处理中任务时继续轮询。 */
@@ -161,7 +165,7 @@ async function saveSettings(): Promise<void> {
   try {
     await updateRetrievalSettings(knowledgeBaseId, {
       candidateLimit: settings.candidateLimit,
-      vectorMinSimilarity: thresholdEnabled.value ? settings.vectorMinSimilarity : null,
+      vectorMinSimilarity: thresholdEnabled.value ? vectorSimilarityPercent.value / 100 : null,
       resultLimit: settings.resultLimit,
     })
     ElMessage.success('检索参数已保存，下次查询立即生效')
@@ -175,7 +179,23 @@ async function saveSettings(): Promise<void> {
 
 /** 启用相似度过滤时填入便于继续调整的推荐初始值。 */
 function handleThresholdToggle(enabled: boolean): void {
-  if (enabled && settings.vectorMinSimilarity === null) settings.vectorMinSimilarity = 0.65
+  if (enabled && settings.vectorMinSimilarity === null) vectorSimilarityPercent.value = 65
+}
+
+/** 候选上限降低时同步收紧最终结果数量，保持参数关系合法。 */
+function handleCandidateLimitChange(value: number): void {
+  if (settings.resultLimit > value) settings.resultLimit = Math.min(value, 50)
+}
+
+/** 为相似度滑杆的浮层补充百分号。 */
+function formatSliderPercent(value: number): string {
+  return `${Number(value.toFixed(1))}%`
+}
+
+/** 打开选中 Chunk 的完整内容与召回得分详情。 */
+function showSearchResultDetail(item: KnowledgeSearchResult): void {
+  selectedSearchResult.value = item
+  searchDetailVisible.value = true
 }
 
 /** 执行 BM25 与向量双路召回并显示融合结果。 */
@@ -224,9 +244,9 @@ onBeforeUnmount(() => { if (pollingTimer) window.clearTimeout(pollingTimer) })
         <el-tab-pane name="settings"><template #label><el-icon><Setting /></el-icon>检索参数</template>
           <div class="settings-layout">
             <el-form ref="settingsFormRef" :model="settings" :rules="settingsRules" label-position="top" class="settings-form">
-              <div class="settings-field"><div><strong>单路候选数量上限</strong><p>BM25 和 KNN 各自送入 RRF 的最大结果数。</p></div><el-form-item prop="candidateLimit"><el-input-number v-model="settings.candidateLimit" :min="1" :max="200" controls-position="right" /></el-form-item></div>
-              <div class="settings-field"><div><strong>向量相似度下限</strong><p>过滤语义相关度不足的结果，关闭时不限制。</p></div><div class="settings-field__control"><el-switch v-model="thresholdEnabled" active-text="启用" inactive-text="关闭" @change="handleThresholdToggle" /><el-input-number v-if="thresholdEnabled" v-model="settings.vectorMinSimilarity" :min="0" :max="1" :step="0.05" :precision="3" controls-position="right" /></div></div>
-              <div class="settings-field"><div><strong>最终结果数量上限</strong><p>RRF 融合去重后交给上层使用的最大结果数。</p></div><el-form-item prop="resultLimit"><el-input-number v-model="settings.resultLimit" :min="1" :max="50" controls-position="right" /></el-form-item></div>
+              <div class="settings-field settings-field--slider"><div class="settings-field__label"><strong>单路候选数量上限</strong><p>BM25 和 KNN 各自送入 RRF 的最大结果数。</p></div><el-form-item prop="candidateLimit" class="settings-field__slider"><el-slider v-model="settings.candidateLimit" :min="1" :max="200" :step="1" show-input @change="handleCandidateLimitChange" /></el-form-item></div>
+              <div class="settings-field settings-field--slider"><div class="settings-field__label"><div class="settings-field__title"><strong>向量相似度下限</strong><el-switch v-model="thresholdEnabled" active-text="启用" inactive-text="关闭" @change="handleThresholdToggle" /></div><p>过滤语义相关度不足的结果，关闭时不限制。</p></div><div class="settings-field__slider settings-field__slider--percent"><el-slider v-model="vectorSimilarityPercent" :disabled="!thresholdEnabled" :min="0" :max="100" :step="0.1" :format-tooltip="formatSliderPercent" /><strong>{{ thresholdEnabled ? formatSliderPercent(vectorSimilarityPercent) : '已关闭' }}</strong></div></div>
+              <div class="settings-field settings-field--slider"><div class="settings-field__label"><strong>最终结果数量上限</strong><p>RRF 融合去重后交给上层使用的最大结果数。</p></div><el-form-item prop="resultLimit" class="settings-field__slider"><el-slider v-model="settings.resultLimit" :min="1" :max="Math.min(50, settings.candidateLimit)" :step="1" show-input /></el-form-item></div>
               <div class="settings-note"><strong>固定策略</strong><p>KNN 的 num_candidates 自动使用单路候选数的 2 倍，无需单独维护。</p></div>
               <el-button type="primary" :loading="savingSettings" @click="saveSettings">保存检索参数</el-button>
             </el-form>
@@ -238,9 +258,9 @@ onBeforeUnmount(() => { if (pollingTimer) window.clearTimeout(pollingTimer) })
           <div class="search-console">
             <header><p class="eyebrow">RETRIEVAL LAB</p><h3>验证问题能否找到正确资料</h3><p>一次请求同时执行全文与向量检索，并展示 RRF 融合后的排名依据。</p></header>
             <div class="search-box"><el-input v-model="searchQuery" size="large" placeholder="输入一个真实客户可能提出的问题" clearable @keyup.enter="runSearch" /><el-button type="primary" :icon="Search" :loading="searching" @click="runSearch">开始检索</el-button></div>
-            <div v-if="searchResponse" class="search-summary"><span>BM25 候选 <strong>{{ searchResponse.bm25CandidateCount }}</strong></span><span>向量候选 <strong>{{ searchResponse.vectorCandidateCount }}</strong></span><span>融合结果 <strong>{{ searchResponse.results.length }}</strong></span><span>相似度下限 <strong>{{ searchResponse.vectorMinSimilarity ?? '关闭' }}</strong></span></div>
+            <div v-if="searchResponse" class="search-summary"><span>BM25 候选 <strong>{{ searchResponse.bm25CandidateCount }}</strong></span><span>向量候选 <strong>{{ searchResponse.vectorCandidateCount }}</strong></span><span>融合结果 <strong>{{ searchResponse.results.length }}</strong></span><span>相似度下限 <strong>{{ formatSimilarityPercent(searchResponse.vectorMinSimilarity, 0) }}</strong></span></div>
             <div v-if="searchResponse?.results.length" class="search-results">
-              <article v-for="item in searchResponse.results" :key="`${item.documentId}-${item.chunkSequence}`"><span class="search-results__rank">{{ item.rank }}</span><div class="search-results__body"><header><strong>{{ item.originalName }}</strong><small>文档 #{{ item.documentId }} · Chunk {{ item.chunkSequence }}</small></header><p>{{ item.content }}</p><footer><el-tag size="small">RRF {{ item.rrfScore.toFixed(4) }}</el-tag><el-tag v-if="item.bm25Rank" size="small" type="warning">BM25 #{{ item.bm25Rank }} · {{ item.bm25Score?.toFixed(3) }}</el-tag><el-tag v-if="item.vectorRank" size="small" type="success">向量 #{{ item.vectorRank }} · {{ item.vectorScore?.toFixed(3) }}</el-tag></footer></div></article>
+              <article v-for="item in searchResponse.results" :key="`${item.documentId}-${item.chunkSequence}`" tabindex="0" @click="showSearchResultDetail(item)" @keyup.enter="showSearchResultDetail(item)"><span class="search-results__rank">{{ item.rank }}</span><div class="search-results__body"><header><div><strong>{{ item.originalName }}</strong><small>文档 #{{ item.documentId }} · Chunk {{ item.chunkSequence }}</small></div><span class="search-results__score">{{ item.vectorScore === null ? '仅关键词命中' : formatCosineScorePercent(item.vectorScore) }}</span></header><p class="search-results__preview">{{ item.content }}</p><footer><el-tag size="small">RRF {{ item.rrfScore.toFixed(4) }}</el-tag><el-tag v-if="item.bm25Rank" size="small" type="warning">BM25 #{{ item.bm25Rank }}</el-tag><el-tag v-if="item.vectorRank" size="small" type="success">向量 #{{ item.vectorRank }}</el-tag><span>点击查看完整内容</span></footer></div></article>
             </div>
             <el-empty v-else-if="searchResponse" description="没有召回结果，请尝试降低阈值或更换问题" />
           </div>
@@ -250,6 +270,14 @@ onBeforeUnmount(() => { if (pollingTimer) window.clearTimeout(pollingTimer) })
 
     <el-drawer v-model="previewVisible" title="文档分块预览" size="620px">
       <div v-if="preview" class="preview-drawer"><div class="preview-stats"><span><strong>{{ preview.extractedCharacters }}</strong>正文字符</span><span><strong>{{ preview.totalChunks }}</strong>个分块</span><span><strong>{{ preview.chunkSize }}</strong>最大字符</span><span><strong>{{ preview.chunkOverlap }}</strong>重叠字符</span></div><article v-for="chunk in preview.chunks" :key="chunk.sequence"><header><strong>Chunk {{ chunk.sequence }}</strong><small>{{ chunk.startOffset }}–{{ chunk.endOffset }} · {{ chunk.characterCount }} 字符</small></header><p>{{ chunk.content }}</p></article></div>
+    </el-drawer>
+
+    <el-drawer v-model="searchDetailVisible" title="召回 Chunk 详情" size="650px">
+      <div v-if="selectedSearchResult" class="search-detail">
+        <header><span class="search-results__rank">{{ selectedSearchResult.rank }}</span><div><p class="eyebrow">RETRIEVAL RESULT</p><h3>{{ selectedSearchResult.originalName }}</h3><small>文档 #{{ selectedSearchResult.documentId }} · Chunk {{ selectedSearchResult.chunkSequence }}</small></div></header>
+        <div class="search-detail__scores"><span><small>RRF 分数</small><strong>{{ selectedSearchResult.rrfScore.toFixed(4) }}</strong></span><span><small>BM25</small><strong>{{ selectedSearchResult.bm25Rank ? `第 ${selectedSearchResult.bm25Rank} 名` : '未命中' }}</strong><em>{{ selectedSearchResult.bm25Score?.toFixed(3) ?? '—' }}</em></span><span><small>向量召回</small><strong>{{ selectedSearchResult.vectorRank ? `第 ${selectedSearchResult.vectorRank} 名` : '未命中' }}</strong><em>{{ formatCosineScorePercent(selectedSearchResult.vectorScore) }}</em></span></div>
+        <section><h4>Chunk 完整内容</h4><p>{{ selectedSearchResult.content }}</p></section>
+      </div>
     </el-drawer>
   </div>
 </template>

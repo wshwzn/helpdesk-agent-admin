@@ -15,3 +15,15 @@ export function formatBytes(value: number): string {
   return `${(value / 1024 ** 2).toFixed(1)} MB`
 }
 
+/** 将 0～1 的相似度转换为百分数展示。 */
+export function formatSimilarityPercent(value: number | null | undefined, digits = 1): string {
+  if (value === null || value === undefined) return '关闭'
+  return `${(value * 100).toFixed(digits)}%`
+}
+
+/** 将 Elasticsearch 的余弦向量分数还原为相似度百分数。 */
+export function formatCosineScorePercent(score: number | null | undefined, digits = 1): string {
+  if (score === null || score === undefined) return '未命中'
+  const similarity = Math.max(-1, Math.min(1, score * 2 - 1))
+  return formatSimilarityPercent(similarity, digits)
+}
