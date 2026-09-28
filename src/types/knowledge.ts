@@ -3,7 +3,7 @@ export interface KnowledgeBase {
   name: string
   description: string | null
   retrievalCandidateLimit: number
-  vectorMinSimilarity: number | null
+  vectorMinSimilarity: number
   retrievalResultLimit: number
   documentCount: number
   version: number
@@ -53,7 +53,7 @@ export interface DocumentChunkPreview {
 
 export interface RetrievalSettingsPayload {
   candidateLimit: number
-  vectorMinSimilarity: number | null
+  vectorMinSimilarity: number
   resultLimit: number
 }
 
@@ -77,4 +77,3 @@ export interface KnowledgeSearchResponse extends RetrievalSettingsPayload {
   vectorCandidateCount: number
   results: KnowledgeSearchResult[]
 }
-

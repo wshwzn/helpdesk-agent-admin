@@ -233,7 +233,6 @@ a { color: inherit; text-decoration: none; }
 .settings-field .el-form-item { margin: 0; }
 .settings-field--slider { display: block; padding: 22px 0 25px; }
 .settings-field__label { margin-bottom: 16px; }
-.settings-field__title { display: flex; align-items: center; justify-content: space-between; }
 .settings-field__slider { width: 100%; }
 .settings-field__slider .el-slider { width: 100%; }
 .settings-field__slider .el-slider__runway { height: 8px; background: #eceef4; border-radius: 8px; }

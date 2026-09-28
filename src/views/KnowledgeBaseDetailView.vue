@@ -41,9 +41,8 @@ const searchResponse = ref<KnowledgeSearchResponse | null>(null)
 const selectedSearchResult = ref<KnowledgeSearchResult | null>(null)
 const searchDetailVisible = ref(false)
 const settingsFormRef = ref<FormInstance>()
-const thresholdEnabled = ref(false)
-const vectorSimilarityPercent = ref(65)
-const settings = reactive<RetrievalSettingsPayload>({ candidateLimit: 50, vectorMinSimilarity: null, resultLimit: 5 })
+const vectorSimilarityPercent = ref(0)
+const settings = reactive<RetrievalSettingsPayload>({ candidateLimit: 50, vectorMinSimilarity: 0, resultLimit: 5 })
 let pollingTimer: number | undefined
 const settingsRules: FormRules<RetrievalSettingsPayload> = {
   resultLimit: [{ validator: (_rule, value, callback) => {
@@ -59,8 +58,7 @@ async function loadKnowledgeBase(): Promise<void> {
   settings.candidateLimit = knowledgeBase.value.retrievalCandidateLimit
   settings.vectorMinSimilarity = knowledgeBase.value.vectorMinSimilarity
   settings.resultLimit = knowledgeBase.value.retrievalResultLimit
-  thresholdEnabled.value = knowledgeBase.value.vectorMinSimilarity !== null
-  vectorSimilarityPercent.value = Math.round((knowledgeBase.value.vectorMinSimilarity ?? 0.65) * 1000) / 10
+  vectorSimilarityPercent.value = Math.round(knowledgeBase.value.vectorMinSimilarity * 1000) / 10
 }
 
 /** 加载当前页文档，并在存在处理中任务时继续轮询。 */
@@ -158,14 +156,14 @@ async function removeDocument(item: KnowledgeDocument): Promise<void> {
   }
 }
 
-/** 保存知识库级检索参数，相似度开关关闭时提交空值。 */
+/** 保存知识库级检索参数，并将百分数阈值转换为后端小数。 */
 async function saveSettings(): Promise<void> {
   if (!(await settingsFormRef.value?.validate().catch(() => false))) return
   savingSettings.value = true
   try {
     await updateRetrievalSettings(knowledgeBaseId, {
       candidateLimit: settings.candidateLimit,
-      vectorMinSimilarity: thresholdEnabled.value ? vectorSimilarityPercent.value / 100 : null,
+      vectorMinSimilarity: vectorSimilarityPercent.value / 100,
       resultLimit: settings.resultLimit,
     })
     ElMessage.success('检索参数已保存，下次查询立即生效')
@@ -175,11 +173,6 @@ async function saveSettings(): Promise<void> {
   } finally {
     savingSettings.value = false
   }
-}
-
-/** 启用相似度过滤时填入便于继续调整的推荐初始值。 */
-function handleThresholdToggle(enabled: boolean): void {
-  if (enabled && settings.vectorMinSimilarity === null) vectorSimilarityPercent.value = 65
 }
 
 /** 候选上限降低时同步收紧最终结果数量，保持参数关系合法。 */
@@ -245,7 +238,7 @@ onBeforeUnmount(() => { if (pollingTimer) window.clearTimeout(pollingTimer) })
           <div class="settings-layout">
             <el-form ref="settingsFormRef" :model="settings" :rules="settingsRules" label-position="top" class="settings-form">
               <div class="settings-field settings-field--slider"><div class="settings-field__label"><strong>单路候选数量上限</strong><p>BM25 和 KNN 各自送入 RRF 的最大结果数。</p></div><el-form-item prop="candidateLimit" class="settings-field__slider"><el-slider v-model="settings.candidateLimit" :min="1" :max="200" :step="1" show-input @change="handleCandidateLimitChange" /></el-form-item></div>
-              <div class="settings-field settings-field--slider"><div class="settings-field__label"><div class="settings-field__title"><strong>向量相似度下限</strong><el-switch v-model="thresholdEnabled" active-text="启用" inactive-text="关闭" @change="handleThresholdToggle" /></div><p>过滤语义相关度不足的结果，关闭时不限制。</p></div><div class="settings-field__slider settings-field__slider--percent"><el-slider v-model="vectorSimilarityPercent" :disabled="!thresholdEnabled" :min="0" :max="100" :step="0.1" :format-tooltip="formatSliderPercent" /><strong>{{ thresholdEnabled ? formatSliderPercent(vectorSimilarityPercent) : '已关闭' }}</strong></div></div>
+              <div class="settings-field settings-field--slider"><div class="settings-field__label"><strong>向量相似度下限</strong><p>始终过滤低于该值的结果；0% 会过滤负相关向量。</p></div><div class="settings-field__slider settings-field__slider--percent"><el-slider v-model="vectorSimilarityPercent" :min="0" :max="100" :step="0.1" :format-tooltip="formatSliderPercent" /><strong>{{ formatSliderPercent(vectorSimilarityPercent) }}</strong></div></div>
               <div class="settings-field settings-field--slider"><div class="settings-field__label"><strong>最终结果数量上限</strong><p>RRF 融合去重后交给上层使用的最大结果数。</p></div><el-form-item prop="resultLimit" class="settings-field__slider"><el-slider v-model="settings.resultLimit" :min="1" :max="Math.min(50, settings.candidateLimit)" :step="1" show-input /></el-form-item></div>
               <div class="settings-note"><strong>固定策略</strong><p>KNN 的 num_candidates 自动使用单路候选数的 2 倍，无需单独维护。</p></div>
               <el-button type="primary" :loading="savingSettings" @click="saveSettings">保存检索参数</el-button>
