@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadFile, type UploadFiles, type UploadUserFile } from 'element-plus'
 import { Back, DataAnalysis, Delete, DocumentAdd, Refresh, Search, Setting, UploadFilled, View } from '@element-plus/icons-vue'
 
 import { normalizeApiError } from '@/api/http'
@@ -26,7 +26,9 @@ const router = useRouter()
 const knowledgeBaseId = Number(route.params.id)
 const loading = ref(true)
 const documentLoading = ref(false)
-const uploading = ref(false)
+const uploadDialogVisible = ref(false)
+const batchUploading = ref(false)
+const uploadFiles = ref<UploadUserFile[]>([])
 const savingSettings = ref(false)
 const searching = ref(false)
 const actionDocumentId = ref<number | null>(null)
@@ -101,20 +103,66 @@ async function initialize(): Promise<void> {
   }
 }
 
-/** 接管 Element Plus 上传请求并保存单个知识文档。 */
-async function handleUpload(options: UploadRequestOptions): Promise<void> {
-  uploading.value = true
+/** 打开批量上传弹窗，并清空上一次已经完成的选择。 */
+function openUploadDialog(): void {
+  uploadFiles.value = []
+  uploadDialogVisible.value = true
+}
+
+/** 在文件加入队列时校验类型和 20 MB 大小限制，拖拽文件也执行相同检查。 */
+function validateUploadFile(file: UploadFile, files: UploadFiles): void {
+  const raw = file.raw
+  const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
+  const invalidType = !['txt', 'md', 'pdf', 'docx'].includes(extension)
+  const tooLarge = Boolean(raw && raw.size > 20 * 1024 * 1024)
+  if (!invalidType && !tooLarge) return
+  uploadFiles.value = files.filter((item) => item.uid !== file.uid)
+  ElMessage.warning(invalidType ? `${file.name} 的格式不受支持` : `${file.name} 超过 20 MB`)
+}
+
+/** 提示单批文件数量限制，避免一次操作占用过多浏览器和服务端资源。 */
+function handleUploadExceed(): void {
+  ElMessage.warning('单次最多添加 20 个文档')
+}
+
+/** 逐个上传队列中的文档，使单个失败不会中断其他文件或造成瞬时内存压力。 */
+async function uploadSelectedFiles(): Promise<void> {
+  const queue = uploadFiles.value.filter((item) => item.status === 'ready' || item.status === 'fail')
+  if (queue.length === 0) {
+    ElMessage.warning('请先选择或拖入文档')
+    return
+  }
+  batchUploading.value = true
+  let succeeded = 0
+  let failed = 0
+  let firstFailureMessage = ''
   try {
-    await uploadKnowledgeDocument(knowledgeBaseId, options.file)
-    ElMessage.success('文档上传成功，可以开始索引')
-    await Promise.all([loadKnowledgeBase(), loadDocuments()])
-    options.onSuccess({})
-  } catch (error) {
-    const normalized = normalizeApiError(error)
-    ElMessage.error(normalized.message)
-    throw normalized
+    for (const item of queue) {
+      if (!item.raw) continue
+      item.status = 'uploading'
+      item.percentage = 0
+      try {
+        await uploadKnowledgeDocument(knowledgeBaseId, item.raw)
+        item.status = 'success'
+        item.percentage = 100
+        succeeded += 1
+      } catch (error) {
+        item.status = 'fail'
+        failed += 1
+        if (!firstFailureMessage) firstFailureMessage = normalizeApiError(error).message
+      }
+    }
+    if (succeeded > 0) await Promise.all([loadKnowledgeBase(), loadDocuments()])
+    if (failed === 0) {
+      ElMessage.success(`已上传 ${succeeded} 个文档，可以开始索引`)
+      uploadDialogVisible.value = false
+      uploadFiles.value = []
+    } else {
+      ElMessage.warning(`上传完成：成功 ${succeeded} 个，失败 ${failed} 个；${firstFailureMessage}`)
+      uploadFiles.value = uploadFiles.value.filter((item) => item.status === 'fail')
+    }
   } finally {
-    uploading.value = false
+    batchUploading.value = false
   }
 }
 
@@ -224,7 +272,7 @@ onBeforeUnmount(() => { if (pollingTimer) window.clearTimeout(pollingTimer) })
     <section class="surface-card detail-workspace">
       <el-tabs v-model="activeTab">
         <el-tab-pane name="documents"><template #label><el-icon><DocumentAdd /></el-icon>文档管理</template>
-          <div class="tab-toolbar"><div><h3>知识文档</h3><p>支持 TXT、Markdown、PDF 和 Word，单文件最大 20 MB。</p></div><el-upload :show-file-list="false" :http-request="handleUpload" accept=".txt,.md,.pdf,.docx"><el-button type="primary" :icon="UploadFilled" :loading="uploading">上传文档</el-button></el-upload></div>
+          <div class="tab-toolbar"><div><h3>知识文档</h3><p>支持拖拽或一次选择多个 TXT、Markdown、PDF 和 Word，单文件最大 20 MB。</p></div><el-button type="primary" :icon="UploadFilled" @click="openUploadDialog">批量上传</el-button></div>
           <el-table v-loading="documentLoading" :data="documents" class="admin-table">
             <el-table-column label="文档"><template #default="{ row }"><div class="document-name"><span>{{ row.fileExtension.toUpperCase() }}</span><div><strong>{{ row.originalName }}</strong><small>{{ formatBytes(row.sizeBytes) }} · {{ formatDateTime(row.createdAt) }}</small></div></div></template></el-table-column>
             <el-table-column label="状态" width="120"><template #default="{ row }"><el-tag :type="statusTypes[row.status as keyof typeof statusTypes]" effect="light" round>{{ statusLabels[row.status as keyof typeof statusLabels] }}</el-tag></template></el-table-column>
@@ -263,6 +311,15 @@ onBeforeUnmount(() => { if (pollingTimer) window.clearTimeout(pollingTimer) })
         <el-tab-pane name="evaluation" lazy><template #label><el-icon><DataAnalysis /></el-icon>检索评测</template><RagEvaluationPanel :knowledge-base-id="knowledgeBaseId" /></el-tab-pane>
       </el-tabs>
     </section>
+
+    <el-dialog v-model="uploadDialogVisible" title="批量上传知识文档" width="620px" :close-on-click-modal="!batchUploading" :close-on-press-escape="!batchUploading" :show-close="!batchUploading">
+      <el-upload v-model:file-list="uploadFiles" class="batch-upload" action="#" drag multiple :auto-upload="false" accept=".txt,.md,.pdf,.docx" :limit="20" :disabled="batchUploading" :on-change="validateUploadFile" :on-exceed="handleUploadExceed">
+        <el-icon class="batch-upload__icon"><UploadFilled /></el-icon>
+        <div class="batch-upload__text"><strong>把文档拖到这里</strong><span>或者点击选择多个文件</span></div>
+        <template #tip><div class="batch-upload__tip">支持 TXT、Markdown、PDF、Word；单文件不超过 20 MB，单次最多 20 个。</div></template>
+      </el-upload>
+      <template #footer><el-button :disabled="batchUploading" @click="uploadDialogVisible = false">取消</el-button><el-button type="primary" :loading="batchUploading" :disabled="uploadFiles.length === 0" @click="uploadSelectedFiles">上传 {{ uploadFiles.length }} 个文档</el-button></template>
+    </el-dialog>
 
     <el-drawer v-model="previewVisible" title="文档分块预览" size="620px">
       <div v-if="preview" class="preview-drawer"><div class="preview-stats"><span><strong>{{ preview.extractedCharacters }}</strong>正文字符</span><span><strong>{{ preview.totalChunks }}</strong>个分块</span><span><strong>{{ preview.chunkSize }}</strong>最大字符</span><span><strong>{{ preview.chunkOverlap }}</strong>重叠字符</span></div><article v-for="chunk in preview.chunks" :key="chunk.sequence"><header><strong>Chunk {{ chunk.sequence }}</strong><small>{{ chunk.startOffset }}–{{ chunk.endOffset }} · {{ chunk.characterCount }} 字符</small></header><p>{{ chunk.content }}</p></article></div>
