@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadFile, type UploadFiles, type UploadUserFile } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type TableInstance, type UploadFile, type UploadFiles, type UploadUserFile } from 'element-plus'
 import { Back, DataAnalysis, Delete, DocumentAdd, Refresh, Search, Setting, UploadFilled, View } from '@element-plus/icons-vue'
 
 import { normalizeApiError } from '@/api/http'
@@ -31,6 +31,7 @@ const batchUploading = ref(false)
 const uploadFiles = ref<UploadUserFile[]>([])
 const savingSettings = ref(false)
 const searching = ref(false)
+const batchIndexing = ref(false)
 const actionDocumentId = ref<number | null>(null)
 const activeTab = ref('documents')
 const knowledgeBase = ref<KnowledgeBase | null>(null)
@@ -44,6 +45,8 @@ const searchResponse = ref<KnowledgeSearchResponse | null>(null)
 const selectedSearchResult = ref<KnowledgeSearchResult | null>(null)
 const searchDetailVisible = ref(false)
 const settingsFormRef = ref<FormInstance>()
+const documentTableRef = ref<TableInstance>()
+const selectedDocuments = ref<KnowledgeDocument[]>([])
 const vectorSimilarityPercent = ref(0)
 const settings = reactive<RetrievalSettingsPayload>({ candidateLimit: 50, vectorMinSimilarity: 0, resultLimit: 5 })
 let pollingTimer: number | undefined
@@ -180,6 +183,49 @@ async function startIndexing(item: KnowledgeDocument): Promise<void> {
   }
 }
 
+/** 限制批量选择范围，防止误重建已就绪文档或重复提交处理中的任务。 */
+function canBatchIndex(item: KnowledgeDocument): boolean {
+  return item.status === 'PENDING' || item.status === 'FAILED'
+}
+
+/** 同步表格勾选结果，作为本次批量索引的文档队列。 */
+function handleDocumentSelectionChange(selection: KnowledgeDocument[]): void {
+  selectedDocuments.value = selection
+}
+
+/** 依次触发所选文档的异步索引，单个失败不影响队列中的其他文档。 */
+async function startBatchIndexing(): Promise<void> {
+  const queue = selectedDocuments.value.filter(canBatchIndex)
+  if (queue.length === 0) {
+    ElMessage.warning('请先勾选待索引或索引失败的文档')
+    return
+  }
+  batchIndexing.value = true
+  let succeeded = 0
+  let failed = 0
+  let firstFailureMessage = ''
+  try {
+    for (const item of queue) {
+      actionDocumentId.value = item.id
+      try {
+        await indexKnowledgeDocument(knowledgeBaseId, item.id)
+        succeeded += 1
+      } catch (error) {
+        failed += 1
+        if (!firstFailureMessage) firstFailureMessage = normalizeApiError(error).message
+      }
+    }
+    documentTableRef.value?.clearSelection()
+    selectedDocuments.value = []
+    await loadDocuments()
+    if (failed === 0) ElMessage.success(`已启动 ${succeeded} 个文档的索引任务`)
+    else ElMessage.warning(`批量索引已提交：成功 ${succeeded} 个，失败 ${failed} 个；${firstFailureMessage}`)
+  } finally {
+    actionDocumentId.value = null
+    batchIndexing.value = false
+  }
+}
+
 /** 解析文档并展示分块预览结果。 */
 async function showPreview(item: KnowledgeDocument): Promise<void> {
   actionDocumentId.value = item.id
@@ -272,12 +318,13 @@ onBeforeUnmount(() => { if (pollingTimer) window.clearTimeout(pollingTimer) })
     <section class="surface-card detail-workspace">
       <el-tabs v-model="activeTab">
         <el-tab-pane name="documents"><template #label><el-icon><DocumentAdd /></el-icon>文档管理</template>
-          <div class="tab-toolbar"><div><h3>知识文档</h3><p>支持拖拽或一次选择多个 TXT、Markdown、PDF 和 Word，单文件最大 20 MB。</p></div><el-button type="primary" :icon="UploadFilled" @click="openUploadDialog">批量上传</el-button></div>
-          <el-table v-loading="documentLoading" :data="documents" class="admin-table">
+          <div class="tab-toolbar"><div><h3>知识文档</h3><p>勾选待索引或失败文档可批量开始索引；已就绪文档仍可单独重新索引。</p></div><div class="tab-toolbar__actions"><el-button :icon="Refresh" :loading="batchIndexing" :disabled="selectedDocuments.length === 0" @click="startBatchIndexing">批量开始索引{{ selectedDocuments.length > 0 ? `（${selectedDocuments.length}）` : '' }}</el-button><el-button type="primary" :icon="UploadFilled" :disabled="batchIndexing" @click="openUploadDialog">批量上传</el-button></div></div>
+          <el-table ref="documentTableRef" v-loading="documentLoading" :data="documents" class="admin-table" @selection-change="handleDocumentSelectionChange">
+            <el-table-column type="selection" width="46" :selectable="canBatchIndex" />
             <el-table-column label="文档"><template #default="{ row }"><div class="document-name"><span>{{ row.fileExtension.toUpperCase() }}</span><div><strong>{{ row.originalName }}</strong><small>{{ formatBytes(row.sizeBytes) }} · {{ formatDateTime(row.createdAt) }}</small></div></div></template></el-table-column>
             <el-table-column label="状态" width="120"><template #default="{ row }"><el-tag :type="statusTypes[row.status as keyof typeof statusTypes]" effect="light" round>{{ statusLabels[row.status as keyof typeof statusLabels] }}</el-tag></template></el-table-column>
             <el-table-column prop="chunkCount" label="分块数" width="90" />
-            <el-table-column label="操作" width="290" align="right"><template #default="{ row }"><el-button text :icon="View" :loading="actionDocumentId === row.id" :disabled="row.status === 'PROCESSING'" @click="showPreview(row)">预览</el-button><el-button text type="primary" :icon="Refresh" :loading="actionDocumentId === row.id" :disabled="row.status === 'PROCESSING'" @click="startIndexing(row)">{{ row.status === 'READY' ? '重新索引' : '开始索引' }}</el-button><el-button text type="danger" :icon="Delete" :disabled="row.status === 'PROCESSING'" @click="removeDocument(row)">删除</el-button></template></el-table-column>
+            <el-table-column label="操作" width="290" align="right"><template #default="{ row }"><el-button text :icon="View" :loading="!batchIndexing && actionDocumentId === row.id" :disabled="batchIndexing || row.status === 'PROCESSING'" @click="showPreview(row)">预览</el-button><el-button text type="primary" :icon="Refresh" :loading="!batchIndexing && actionDocumentId === row.id" :disabled="batchIndexing || row.status === 'PROCESSING'" @click="startIndexing(row)">{{ row.status === 'READY' ? '重新索引' : '开始索引' }}</el-button><el-button text type="danger" :icon="Delete" :disabled="batchIndexing || row.status === 'PROCESSING'" @click="removeDocument(row)">删除</el-button></template></el-table-column>
             <template #empty><el-empty description="还没有上传文档" :image-size="70" /></template>
           </el-table>
           <el-pagination v-if="documentTotal > 20" v-model:current-page="documentPage" layout="prev, pager, next" :total="documentTotal" :page-size="20" @current-change="loadDocuments" />
