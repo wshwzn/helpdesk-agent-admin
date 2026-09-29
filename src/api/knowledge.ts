@@ -1,4 +1,4 @@
-import { requestData, requestVoid } from '@/api/http'
+import { requestBlob, requestData, requestVoid } from '@/api/http'
 import type { PageResponse } from '@/types/api'
 import type {
   DocumentChunkPreview,
@@ -45,6 +45,16 @@ export function updateRetrievalSettings(id: number, payload: RetrievalSettingsPa
 /** 分页查询知识库文档。 */
 export function listKnowledgeDocuments(id: number, page = 1, size = 20): Promise<PageResponse<KnowledgeDocument>> {
   return requestData({ method: 'GET', url: `/admin/knowledge-bases/${id}/documents`, params: { page, size } })
+}
+
+/** 查询一个知识库文档的元数据。 */
+export function getKnowledgeDocument(knowledgeBaseId: number, documentId: number): Promise<KnowledgeDocument> {
+  return requestData({ method: 'GET', url: `/admin/knowledge-bases/${knowledgeBaseId}/documents/${documentId}` })
+}
+
+/** 读取一个知识库文档的原始二进制内容。 */
+export function getKnowledgeDocumentContent(knowledgeBaseId: number, documentId: number): Promise<Blob> {
+  return requestBlob({ method: 'GET', url: `/admin/knowledge-bases/${knowledgeBaseId}/documents/${documentId}/content` })
 }
 
 /** 上传一个原始文档。 */

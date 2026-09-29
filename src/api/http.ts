@@ -59,6 +59,29 @@ export async function requestVoid(config: AxiosRequestConfig): Promise<void> {
   }
 }
 
+/** 请求受鉴权保护的二进制文件，并保留统一的异常处理行为。 */
+export async function requestBlob(config: AxiosRequestConfig): Promise<Blob> {
+  try {
+    const response = await http.request<Blob>({ ...config, responseType: 'blob' })
+    return response.data
+  } catch (error) {
+    throw await normalizeBlobError(error)
+  }
+}
+
+/** 尝试解析二进制错误响应中的统一 JSON 异常。 */
+async function normalizeBlobError(error: unknown): Promise<ApiRequestError> {
+  if (axios.isAxiosError(error) && error.response?.data instanceof Blob) {
+    try {
+      const payload = JSON.parse(await error.response.data.text()) as ApiResponse<unknown>
+      return new ApiRequestError(payload.message, payload.code, payload.data)
+    } catch {
+      return normalizeApiError(error)
+    }
+  }
+  return normalizeApiError(error)
+}
+
 /** 将网络错误和后端业务异常转换为统一错误。 */
 export function normalizeApiError(error: unknown): ApiRequestError {
   if (error instanceof ApiRequestError) return error
@@ -72,4 +95,3 @@ export function normalizeApiError(error: unknown): ApiRequestError {
   }
   return new ApiRequestError(error instanceof Error ? error.message : '未知请求错误')
 }
-

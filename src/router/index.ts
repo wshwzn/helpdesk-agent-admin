@@ -19,6 +19,12 @@ const router = createRouter({
         { path: 'knowledge/:id', name: 'knowledge-detail', component: () => import('@/views/KnowledgeBaseDetailView.vue'), meta: { title: '知识库详情' } },
       ],
     },
+    {
+      path: '/knowledge/:id/documents/:documentId/original',
+      name: 'knowledge-document-original',
+      component: () => import('@/views/KnowledgeDocumentOriginalView.vue'),
+      meta: { requiresAuth: true, title: '原始文档' },
+    },
     { path: '/:pathMatch(.*)*', redirect: '/dashboard' },
   ],
 })
@@ -33,4 +39,3 @@ router.beforeEach((to) => {
 })
 
 export default router
-
