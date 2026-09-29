@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { CircleCheck, Connection, EditPen, Plus, Promotion, Refresh } from '@element-plus/icons-vue'
+import { CircleCheck, Connection, EditPen, Plus, Refresh, StarFilled } from '@element-plus/icons-vue'
 
 import { normalizeApiError } from '@/api/http'
 import {
@@ -213,8 +213,11 @@ onMounted(loadModels)
         <article v-for="item in displayedModels" :key="item.id" class="model-card">
           <header>
             <span class="model-card__logo" :class="`model-card__logo--${item.modelType.toLowerCase()}`">{{ item.modelType === 'CHAT' ? 'AI' : 'E' }}</span>
-            <div><strong>{{ item.name }}</strong><small>{{ typeLabels[item.modelType] }} · {{ item.vendor }}</small></div>
-            <el-tag v-if="item.isDefault" type="success" effect="light" round>默认</el-tag>
+            <div class="model-card__identity"><strong>{{ item.name }}</strong><small>{{ typeLabels[item.modelType] }} · {{ item.vendor }}</small></div>
+            <div class="model-card__default-action">
+              <el-tag v-if="item.isDefault" type="success" effect="light" round><el-icon><StarFilled /></el-icon>默认模型</el-tag>
+              <el-button v-else size="small" plain type="primary" :icon="StarFilled" :disabled="!item.enabled" :title="item.enabled ? '设为当前用途的默认模型' : '请先启用模型'" @click="makeDefault(item)">设为默认</el-button>
+            </div>
           </header>
           <dl>
             <div><dt>模型名称</dt><dd>{{ item.modelName }}</dd></div>
@@ -231,7 +234,6 @@ onMounted(loadModels)
           <footer>
             <el-button text :icon="Connection" :loading="testingId === item.id" @click="testConnection(item)">测试</el-button>
             <el-button text :icon="EditPen" @click="openEdit(item)">编辑</el-button>
-            <el-button v-if="!item.isDefault" text :icon="Promotion" :disabled="!item.enabled" @click="makeDefault(item)">设为默认</el-button>
             <el-button text :type="item.enabled ? 'danger' : 'success'" @click="toggleEnabled(item)">{{ item.enabled ? '禁用' : '启用' }}</el-button>
           </footer>
         </article>
@@ -257,4 +259,3 @@ onMounted(loadModels)
     </el-dialog>
   </div>
 </template>
-

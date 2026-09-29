@@ -92,7 +92,7 @@ onMounted(loadKnowledgeBases)
 
     <section v-loading="loading" class="knowledge-grid">
       <article v-for="item in knowledgeBases" :key="item.id" class="knowledge-card" @click="router.push(`/knowledge/${item.id}`)">
-        <header><div class="knowledge-card__identity"><span class="knowledge-card__icon">{{ item.name.slice(0, 1) }}</span><el-tag v-if="item.isDefault" type="success" effect="light" round><el-icon><StarFilled /></el-icon>默认</el-tag></div><el-dropdown trigger="click" @click.stop><button class="more-button">•••</button><template #dropdown><el-dropdown-menu><el-dropdown-item v-if="!item.isDefault" :icon="StarFilled" @click="makeDefault(item)">设为默认</el-dropdown-item><el-dropdown-item :icon="Delete" :disabled="item.documentCount > 0" @click="removeKnowledgeBase(item)">删除知识库</el-dropdown-item></el-dropdown-menu></template></el-dropdown></header>
+        <header><div class="knowledge-card__identity"><span class="knowledge-card__icon">{{ item.name.slice(0, 1) }}</span><el-tag v-if="item.isDefault" type="success" effect="light" round><el-icon><StarFilled /></el-icon>默认</el-tag></div><div class="knowledge-card__menu" @click.stop><el-dropdown trigger="click"><button class="more-button" aria-label="知识库操作">•••</button><template #dropdown><el-dropdown-menu><el-dropdown-item v-if="!item.isDefault" :icon="StarFilled" @click="makeDefault(item)">设为默认</el-dropdown-item><el-dropdown-item :icon="Delete" :disabled="item.documentCount > 0" @click="removeKnowledgeBase(item)">删除知识库</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div></header>
         <h3>{{ item.name }}</h3>
         <p>{{ item.description || '暂未填写知识库说明。' }}</p>
         <div class="knowledge-card__stats">

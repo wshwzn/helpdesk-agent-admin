@@ -171,13 +171,16 @@ a { color: inherit; text-decoration: none; }
 .model-card { padding: 20px; border: 1px solid #e9eaf0; border-radius: 14px; transition: 160ms ease; }
 .model-card:hover { border-color: #d4d4ee; box-shadow: 0 10px 28px rgb(47 48 98 / 7%); transform: translateY(-1px); }
 .model-card > header { display: flex; gap: 11px; align-items: center; }
-.model-card > header > div { min-width: 0; flex: 1; }
+.model-card__identity { min-width: 0; flex: 1; }
 .model-card > header strong, .model-card > header small { display: block; }
 .model-card > header strong { font-size: 13px; }
 .model-card > header small { margin-top: 4px; color: #959cab; font-size: 9px; }
 .model-card__logo { display: grid; width: 39px; height: 39px; color: #fff; font-size: 10px; font-weight: 800; border-radius: 12px; place-items: center; }
 .model-card__logo--chat { background: linear-gradient(145deg, #5d60d4, #857ce7); }
 .model-card__logo--embedding { background: linear-gradient(145deg, #328b79, #65b494); }
+.model-card__default-action { flex: 0 0 auto; }
+.model-card__default-action .el-tag { gap: 3px; }
+.model-card__default-action .el-button { margin: 0; border-radius: 8px; }
 .model-card dl { margin: 18px 0 14px; padding: 12px 14px; background: #f8f9fb; border-radius: 10px; }
 .model-card dl > div { display: grid; padding: 5px 0; grid-template-columns: 76px minmax(0, 1fr); }
 .model-card dt { color: #969dab; font-size: 9px; }
@@ -196,6 +199,7 @@ a { color: inherit; text-decoration: none; }
 .knowledge-card > header { display: flex; align-items: center; justify-content: space-between; }
 .knowledge-card__identity { display: flex; gap: 10px; align-items: center; }
 .knowledge-card__identity .el-tag { gap: 3px; }
+.knowledge-card__menu { position: relative; z-index: 2; }
 .knowledge-card__icon { display: grid; width: 42px; height: 42px; color: #fff; font-size: 14px; font-weight: 750; background: linear-gradient(145deg, #5e61d4, #8a81e8); border-radius: 13px; box-shadow: 0 8px 18px rgb(91 91 214 / 18%); place-items: center; }
 .more-button { padding: 7px; cursor: pointer; color: #949baa; background: transparent; border: 0; }
 .knowledge-card h3 { margin: 20px 0 8px; font-size: 16px; }
