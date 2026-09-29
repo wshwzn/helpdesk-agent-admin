@@ -21,7 +21,7 @@ VITE_BACKEND_URL=http://localhost:8080
 
 - 管理员 JWT 登录和角色校验
 - Chat、Embedding 模型新增、编辑、连接测试、启停和默认项设置
-- 知识库创建、文档上传、分块预览、索引和删除
+- 知识库创建、默认项设置、文档上传、分块预览、索引和删除
 - 单路候选数、向量相似度下限、最终结果数配置
 - BM25、KNN 与 RRF 融合结果可视化调试
 
@@ -35,4 +35,3 @@ npm run build      # 类型检查并构建生产产物
 ```
 
 本地 `.env.local`、JWT、API Key、`node_modules/` 和 `dist/` 不应提交到仓库。
-

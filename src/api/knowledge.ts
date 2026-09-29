@@ -28,6 +28,11 @@ export function deleteKnowledgeBase(id: number): Promise<void> {
   return requestVoid({ method: 'DELETE', url: `/admin/knowledge-bases/${id}` })
 }
 
+/** 将知识库设为客户对话 RAG 使用的唯一默认项。 */
+export function setDefaultKnowledgeBase(id: number): Promise<KnowledgeBase> {
+  return requestData({ method: 'POST', url: `/admin/knowledge-bases/${id}/default` })
+}
+
 /** 更新知识库的混合检索参数。 */
 export function updateRetrievalSettings(id: number, payload: RetrievalSettingsPayload): Promise<RetrievalSettingsPayload> {
   return requestData({ method: 'PUT', url: `/admin/knowledge-bases/${id}/retrieval-settings`, data: payload })
@@ -64,4 +69,3 @@ export function previewDocumentChunks(knowledgeBaseId: number, documentId: numbe
 export function searchKnowledgeBase(id: number, query: string): Promise<KnowledgeSearchResponse> {
   return requestData({ method: 'POST', url: `/admin/knowledge-bases/${id}/search`, data: { query } })
 }
-

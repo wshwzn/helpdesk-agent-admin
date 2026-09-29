@@ -5,6 +5,7 @@ export interface KnowledgeBase {
   retrievalCandidateLimit: number
   vectorMinSimilarity: number
   retrievalResultLimit: number
+  isDefault: boolean
   documentCount: number
   version: number
   createdAt: string
