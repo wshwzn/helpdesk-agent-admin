@@ -14,7 +14,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
-const form = reactive<LoginRequest>({ username: '', password: '' })
+const form = reactive<LoginRequest>({ username: 'admin', password: 'admin123' })
 const rules: FormRules<LoginRequest> = {
   username: [{ required: true, message: '请输入管理员账号', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
@@ -74,4 +74,3 @@ async function submitLogin(): Promise<void> {
     </section>
   </main>
 </template>
-
