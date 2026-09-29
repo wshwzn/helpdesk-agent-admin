@@ -2,9 +2,10 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
-import { Back, Delete, DocumentAdd, Refresh, Search, Setting, UploadFilled, View } from '@element-plus/icons-vue'
+import { Back, DataAnalysis, Delete, DocumentAdd, Refresh, Search, Setting, UploadFilled, View } from '@element-plus/icons-vue'
 
 import { normalizeApiError } from '@/api/http'
+import RagEvaluationPanel from '@/components/knowledge/RagEvaluationPanel.vue'
 import {
   deleteKnowledgeDocument,
   getKnowledgeBase,
@@ -258,6 +259,8 @@ onBeforeUnmount(() => { if (pollingTimer) window.clearTimeout(pollingTimer) })
             <el-empty v-else-if="searchResponse" description="没有召回结果，请尝试降低阈值或更换问题" />
           </div>
         </el-tab-pane>
+
+        <el-tab-pane name="evaluation" lazy><template #label><el-icon><DataAnalysis /></el-icon>检索评测</template><RagEvaluationPanel :knowledge-base-id="knowledgeBaseId" /></el-tab-pane>
       </el-tabs>
     </section>
 

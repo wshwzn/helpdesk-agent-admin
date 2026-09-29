@@ -78,3 +78,55 @@ export interface KnowledgeSearchResponse extends RetrievalSettingsPayload {
   vectorCandidateCount: number
   results: KnowledgeSearchResult[]
 }
+
+export interface RagExpectedDocument {
+  id: number
+  originalName: string
+}
+
+export interface RagEvaluationCase {
+  id: number
+  knowledgeBaseId: number
+  question: string
+  expectedDocuments: RagExpectedDocument[]
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface RagEvaluationCasePayload {
+  question: string
+  expectedDocumentIds: number[]
+  version?: number
+}
+
+export interface RagEvaluationRunSummary extends RetrievalSettingsPayload {
+  id: number
+  knowledgeBaseId: number
+  totalCases: number
+  hitCases: number
+  hitRate: number
+  recallAtK: number
+  meanReciprocalRank: number
+  averageLatencyMs: number
+  createdAt: string
+}
+
+export interface RagEvaluationCaseResult {
+  caseId: number
+  question: string
+  expectedDocuments: RagExpectedDocument[]
+  hit: boolean
+  expectedDocumentCount: number
+  matchedDocumentCount: number
+  firstRelevantRank: number | null
+  recallAtK: number
+  reciprocalRank: number
+  latencyMs: number
+  retrievedResults: KnowledgeSearchResult[]
+}
+
+export interface RagEvaluationRun {
+  summary: RagEvaluationRunSummary
+  results: RagEvaluationCaseResult[]
+}

@@ -5,6 +5,10 @@ import type {
   KnowledgeBase,
   KnowledgeDocument,
   KnowledgeSearchResponse,
+  RagEvaluationCase,
+  RagEvaluationCasePayload,
+  RagEvaluationRun,
+  RagEvaluationRunSummary,
   RetrievalSettingsPayload,
 } from '@/types/knowledge'
 
@@ -68,4 +72,39 @@ export function previewDocumentChunks(knowledgeBaseId: number, documentId: numbe
 /** 使用当前参数调试知识库混合检索。 */
 export function searchKnowledgeBase(id: number, query: string): Promise<KnowledgeSearchResponse> {
   return requestData({ method: 'POST', url: `/admin/knowledge-bases/${id}/search`, data: { query } })
+}
+
+/** 查询知识库当前维护的全部 RAG 评测用例。 */
+export function listRagEvaluationCases(id: number): Promise<RagEvaluationCase[]> {
+  return requestData({ method: 'GET', url: `/admin/knowledge-bases/${id}/evaluation/cases` })
+}
+
+/** 创建一条支持多个期望文档的 RAG 评测用例。 */
+export function createRagEvaluationCase(id: number, payload: RagEvaluationCasePayload): Promise<RagEvaluationCase> {
+  return requestData({ method: 'POST', url: `/admin/knowledge-bases/${id}/evaluation/cases`, data: payload })
+}
+
+/** 修改 RAG 评测问题及其期望文档列表。 */
+export function updateRagEvaluationCase(id: number, caseId: number, payload: RagEvaluationCasePayload): Promise<RagEvaluationCase> {
+  return requestData({ method: 'PUT', url: `/admin/knowledge-bases/${id}/evaluation/cases/${caseId}`, data: payload })
+}
+
+/** 删除当前评测用例，历史运行快照继续保留。 */
+export function deleteRagEvaluationCase(id: number, caseId: number): Promise<void> {
+  return requestVoid({ method: 'DELETE', url: `/admin/knowledge-bases/${id}/evaluation/cases/${caseId}` })
+}
+
+/** 使用当前检索参数运行全部评测用例，批量模型调用允许最长五分钟。 */
+export function runRagEvaluation(id: number): Promise<RagEvaluationRun> {
+  return requestData({ method: 'POST', url: `/admin/knowledge-bases/${id}/evaluation/runs`, timeout: 300_000 })
+}
+
+/** 查询最近十次 RAG 评测运行汇总。 */
+export function listRagEvaluationRuns(id: number): Promise<RagEvaluationRunSummary[]> {
+  return requestData({ method: 'GET', url: `/admin/knowledge-bases/${id}/evaluation/runs`, params: { limit: 10 } })
+}
+
+/** 查询一次 RAG 评测的逐题召回快照。 */
+export function getRagEvaluationRun(id: number, runId: number): Promise<RagEvaluationRun> {
+  return requestData({ method: 'GET', url: `/admin/knowledge-bases/${id}/evaluation/runs/${runId}` })
 }
