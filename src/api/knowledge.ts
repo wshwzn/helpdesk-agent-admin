@@ -118,3 +118,8 @@ export function listRagEvaluationRuns(id: number): Promise<RagEvaluationRunSumma
 export function getRagEvaluationRun(id: number, runId: number): Promise<RagEvaluationRun> {
   return requestData({ method: 'GET', url: `/admin/knowledge-bases/${id}/evaluation/runs/${runId}` })
 }
+
+/** 删除一次 RAG 评测运行的汇总和逐题快照。 */
+export function deleteRagEvaluationRun(id: number, runId: number): Promise<void> {
+  return requestVoid({ method: 'DELETE', url: `/admin/knowledge-bases/${id}/evaluation/runs/${runId}` })
+}

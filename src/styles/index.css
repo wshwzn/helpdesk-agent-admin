@@ -323,6 +323,8 @@ a { color: inherit; text-decoration: none; }
 .evaluation-section__heading { display: flex; min-height: 34px; margin-bottom: 10px; align-items: center; justify-content: space-between; }
 .evaluation-section__heading h4 { margin: 0; color: #343b4d; font-size: 13px; }
 .evaluation-section__heading > span { color: #999fac; font-size: 9px; }
+.evaluation-run-actions { display: flex; width: min(100%, 360px); gap: 8px; align-items: center; }
+.evaluation-run-actions .el-select { min-width: 0; flex: 1; }
 .evaluation-document-tags { display: flex; gap: 5px; flex-wrap: wrap; }
 .evaluation-runs { padding-top: 24px; border-top: 1px solid #eceef3; }
 .evaluation-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }

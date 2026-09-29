@@ -7,6 +7,7 @@ import { normalizeApiError } from '@/api/http'
 import {
   createRagEvaluationCase,
   deleteRagEvaluationCase,
+  deleteRagEvaluationRun,
   getRagEvaluationRun,
   listKnowledgeDocuments,
   listRagEvaluationCases,
@@ -28,6 +29,7 @@ const loading = ref(true)
 const saving = ref(false)
 const running = ref(false)
 const runLoading = ref(false)
+const deletingRun = ref(false)
 const dialogVisible = ref(false)
 const formRef = ref<FormInstance>()
 const cases = ref<RagEvaluationCase[]>([])
@@ -70,6 +72,11 @@ async function loadCases(): Promise<void> {
 /** 读取最近运行记录，并在首次加载时选中最新一次。 */
 async function loadRuns(selectLatest = false): Promise<void> {
   runs.value = await listRagEvaluationRuns(props.knowledgeBaseId)
+  if (runs.value.length === 0) {
+    selectedRunId.value = null
+    selectedRun.value = null
+    return
+  }
   if (selectLatest && runs.value.length > 0) {
     await selectRun(runs.value[0].id)
   }
@@ -172,6 +179,34 @@ async function selectRun(runId: number): Promise<void> {
   }
 }
 
+/** 二次确认后删除当前运行的汇总和逐题快照，并选择相邻历史记录。 */
+async function removeSelectedRun(): Promise<void> {
+  if (selectedRunId.value === null) return
+  try {
+    await ElMessageBox.confirm(
+      '删除后，本次指标和逐题召回快照将无法恢复；评测用例不会受影响。确定继续吗？',
+      '删除评测结果',
+      { type: 'warning' },
+    )
+    deletingRun.value = true
+    const runId = selectedRunId.value
+    const deletedIndex = runs.value.findIndex((run) => run.id === runId)
+    await deleteRagEvaluationRun(props.knowledgeBaseId, runId)
+    runs.value = runs.value.filter((run) => run.id !== runId)
+    selectedRunId.value = null
+    selectedRun.value = null
+    if (runs.value.length > 0) {
+      const nextIndex = Math.min(Math.max(deletedIndex, 0), runs.value.length - 1)
+      await selectRun(runs.value[nextIndex].id)
+    }
+    ElMessage.success('评测结果已删除')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(normalizeApiError(error).message)
+  } finally {
+    deletingRun.value = false
+  }
+}
+
 onMounted(initialize)
 </script>
 
@@ -193,7 +228,7 @@ onMounted(initialize)
     </section>
 
     <section class="evaluation-section evaluation-runs">
-      <div class="evaluation-section__heading"><h4>运行结果</h4><el-select v-if="runs.length" v-model="selectedRunId" placeholder="选择历史运行" style="width: 250px" @change="selectRun"><el-option v-for="run in runs" :key="run.id" :label="`${formatDateTime(run.createdAt)} · Hit ${formatMetric(run.hitRate)}`" :value="run.id" /></el-select></div>
+      <div class="evaluation-section__heading"><h4>运行结果</h4><div v-if="runs.length" class="evaluation-run-actions"><el-select v-model="selectedRunId" placeholder="选择历史运行" :disabled="runLoading || deletingRun || running" @change="selectRun"><el-option v-for="run in runs" :key="run.id" :label="`${formatDateTime(run.createdAt)} · Hit ${formatMetric(run.hitRate)}`" :value="run.id" /></el-select><el-button type="danger" plain :icon="Delete" :loading="deletingRun" :disabled="runLoading || running || selectedRunId === null" @click="removeSelectedRun">删除结果</el-button></div></div>
       <div v-if="selectedRun" v-loading="runLoading">
         <div class="evaluation-metrics"><article><small>Hit@{{ selectedRun.summary.resultLimit }}</small><strong>{{ formatMetric(selectedRun.summary.hitRate) }}</strong><span>{{ selectedRun.summary.hitCases }}/{{ selectedRun.summary.totalCases }} 个问题命中</span></article><article><small>Recall@{{ selectedRun.summary.resultLimit }}</small><strong>{{ formatMetric(selectedRun.summary.recallAtK) }}</strong><span>期望文档平均覆盖率</span></article><article><small>MRR</small><strong>{{ selectedRun.summary.meanReciprocalRank.toFixed(3) }}</strong><span>首个相关结果排名质量</span></article><article><small>平均耗时</small><strong>{{ selectedRun.summary.averageLatencyMs }} ms</strong><span>每个问题完整检索耗时</span></article></div>
         <p class="evaluation-snapshot">参数快照：单路候选 {{ selectedRun.summary.candidateLimit }} · 相似度下限 {{ formatMetric(selectedRun.summary.vectorMinSimilarity) }} · 最终结果 {{ selectedRun.summary.resultLimit }}</p>
